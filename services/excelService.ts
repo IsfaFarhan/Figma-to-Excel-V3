@@ -2,6 +2,43 @@
 import ExcelJS from 'exceljs';
 import { UploadedScreen, ColumnHeader } from '../types';
 
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Failed to read image file.'));
+    reader.readAsDataURL(file);
+  });
+
+const fileToPngDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas context not available for image conversion.'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (err) {
+        reject(err);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image for conversion.'));
+    };
+    img.src = url;
+  });
+
 export const generateExcelFile = async (screens: UploadedScreen[], fileName: string) => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Copywriting Extraction');
@@ -66,10 +103,29 @@ export const generateExcelFile = async (screens: UploadedScreen[], fileName: str
     }
 
     try {
-      const base64Data = screen.preview.split(',')[1];
+      let dataUrl: string;
+      let extension: 'png' | 'jpeg' = 'png';
+
+      if (screen.file.type === 'image/png') {
+        dataUrl = await readFileAsDataUrl(screen.file);
+        extension = 'png';
+      } else if (screen.file.type === 'image/jpeg' || screen.file.type === 'image/jpg') {
+        dataUrl = await readFileAsDataUrl(screen.file);
+        extension = 'jpeg';
+      } else {
+        // Convert unsupported formats (e.g., webp) to PNG for ExcelJS compatibility.
+        dataUrl = await fileToPngDataUrl(screen.file);
+        extension = 'png';
+      }
+
+      const base64Data = dataUrl.split(',')[1];
+      if (!base64Data) {
+        throw new Error('Invalid image data URL.');
+      }
+
       const imageId = workbook.addImage({
         base64: base64Data,
-        extension: 'png',
+        extension,
       });
 
       // Calculate the extension to preserve resolution as much as possible
