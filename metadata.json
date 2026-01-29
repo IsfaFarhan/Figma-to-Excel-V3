@@ -1,0 +1,5 @@
+{
+  "name": "Figma Copywriting Extractor V02",
+  "description": "Upload Figma screens to automatically extract copywriting and generate a formatted Excel document with embedded images and structured columns for multilingual review.",
+  "requestFramePermissions": []
+}
